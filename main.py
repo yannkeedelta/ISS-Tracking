@@ -4,14 +4,24 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 import math
+from http.client import responses
 from time import sleep
+from skyfield.api import EarthSatellite, Topos, load
 import requests
+from pprint import pprint
 import gpsd
+import urllib.request
+import json
+
+from skyfield.elementslib import semi_major_axis
 
 
 class ISS:
     def __init__(self):
         self.api = 'https://api.wheretheiss.at/v1/satellites/25544'
+        self.tle_api = 'https://tle.ivanstanojevic.me/api/tle/25544'
+        self.R = 6371000
+
         self.latitude = None
         self.longitude = None
         self.speed = None
@@ -19,8 +29,57 @@ class ISS:
         self.azimut = None
         self.elevation = None
         self.distance = None
-        self.R = 6371000
+        self.satellite = None
 
+        self._load_tle()
+
+
+    def _load_tle(self):
+        """Charge les TLE depuis l'API ivanstanojevic"""
+        try:
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            }
+            response = requests.get(
+                self.tle_api,
+                headers=headers,
+                timeout=5
+            )
+            if response.status_code == 200:
+                data = response.json()
+                name = data['name']
+                self.tle = {
+                    'name': data['name'],
+                    'line1': data['line1'],
+                    'line2': data['line2']
+                }
+                print(f"TLE chargé : {name}")
+            else:
+                print(f"Erreur API TLE : status {response.status_code}")
+        except Exception as e:
+            print(f"Erreur chargement TLE : {e}")
+
+    def get_position(self, seconds=10):
+        """Retourne la position projetée de l'ISS dans `seconds` secondes"""
+
+        ts = load.timescale()
+        self.satellite = EarthSatellite(self.tle['line1'], self.tle['line2'], self.tle['name'], ts)
+
+
+        t_future = ts.now() + seconds / 86400.0
+        geo = self.satellite.at(t_future)
+        subpoint = geo.subpoint()
+
+        if seconds == 0:
+            self.latitude = float(subpoint.latitude.degrees)
+            self.longitude = float(subpoint.longitude.degrees)
+            self.altitude = float(subpoint.elevation.km)
+
+        return (
+            float(subpoint.latitude.degrees),
+            float(subpoint.longitude.degrees),
+            float(subpoint.elevation.km)
+        )
 
     def get_iss(self):
         print("########### Get API ISS Loc ##############")
@@ -31,6 +90,15 @@ class ISS:
             self.longitude = float(data['longitude'])
             self.altitude = float(data['altitude'])
             self.speed = float(data['velocity']) * 3.6
+
+            return (
+                self.latitude,
+                self.longitude,
+                self.altitude,
+                self.speed
+            )
+        else:
+            return False
 
     def get_azimut(self, lat1, lon1):
         phi1 = math.radians(lat1)
@@ -73,27 +141,6 @@ class ISS:
 
         return self.distance
 
-    def projection_gps(self, temps):
-        lat = math.radians(self.latitude)
-        lon = math.radians(self.longitude)
-        azimut = math.radians(self.azimut)
-
-        d = self.speed * temps
-
-        # nouvelle latitude
-        lat2 = math.asin(
-            math.sin(lat) * math.cos(d / self.R) +
-            math.cos(lat) * math.sin(d / self.R) * math.cos(azimut)
-        )
-
-        # nouvelle longitude
-        lon2 = lon + math.atan2(
-            math.sin(azimut) * math.sin(d / self.R) * math.cos(lat),
-            math.cos(d / self.R) - math.sin(lat) * math.sin(lat2)
-        )
-
-        self.latitude = math.degrees(lat2)
-        self.longitude = math.degrees(lon2)
 
 class GPS:
     def __init__(self):
@@ -130,17 +177,16 @@ class GPS:
         return self.latitude, self.longitude, self.altitude
 
 
-gps = GPS()
-current_position = gps.get_position()
-lat_src, long_src, haut_src = float(current_position[0]), float(current_position[1]), float(current_position[2])
+#gps = GPS()
+#current_position = gps.get_position()
+lat_src, long_src, haut_src = float(48.85), float(2.34), float(0)
 iss = ISS()
 
 while True:
-    #ISS.projection_gps(1)
-    sleep(1)
-    iss.get_iss()
+    iss.get_position(0)
     iss.get_azimut(lat_src, long_src)
     iss.get_elevation(lat_src, long_src, haut_src)
+    sleep(1)
 
 
 # Press the green button in the gutter to run the script.
