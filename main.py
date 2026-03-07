@@ -7,7 +7,7 @@ import math
 from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
 import requests
-import gpsd
+#import gpsd
 #import RPi.GPIO as GPIO
 
 
@@ -245,6 +245,7 @@ class Motor(DRV8825):
         #super().__init__(dir_pin, step_pin, enable_pin, mode_pins)
         self.steps = steps
         self.steps_degree = float(360 / self.steps)
+        self.precision = len(str(self.steps_degree).split('.')[-1])
         self.current_angle = 0.0  # Angle actuel en degrés
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
 
@@ -257,33 +258,18 @@ class Motor(DRV8825):
         target_angle = target_angle % 360
         # Calculer le delta entre l'angle cible et l'angle actuel
 
-        delta = target_angle - self.current_angle
-        print(delta)
-
-        # Ajouter le delta cumulé précédent
+        delta = abs(target_angle - self.current_angle)
         self.cumulative_delta += delta
 
+        print(self.cumulative_delta)
 
-        # Calculer le nombre de steps nécessaires
-        steps_needed = int(self.cumulative_delta / self.steps_degree)
-        print("Delta:", self.cumulative_delta)
-
-        if abs(steps_needed) > 0:
-            # Déterminer la direction
-            direction = 'forward' if target_angle > self.current_angle else 'backward'
-            print("Déplacement moteur: ", direction, 'de ', abs(steps_needed))
-            # Faire bouger le moteur
-            #self.TurnStep(direction, abs(steps_needed))
-            # Mettre à jour l'angle actuel
-            self.current_angle += steps_needed * self.steps_degree
-            self.current_angle %= 360  # Garder entre 0° et 360°
-            #print(self.current_angle)
-            # Réinitialiser le delta cumulé
+        if self.cumulative_delta >= self.steps_degree:
+            direction = 'forward' if self.cumulative_delta <= 180 else 'backward'
+            stepd_needed = int(round(self.cumulative_delta / self.steps_degree))
+            print("move motor", direction, stepd_needed)
+            self.current_angle = stepd_needed * self.steps_degree % 360
             self.cumulative_delta = 0.0
-            print(self.cumulative_delta)
-            #print(f"Moteur déplacé à {self.current_angle:.2f}°.")
-        #else:
-            #print(f"Delta trop petit ({abs(self.cumulative_delta):.2f}°), cumulé pour le prochain mouvement.")
+
 
     def get_current_angle(self) -> float:
         """Retourne l'angle actuel du moteur."""
