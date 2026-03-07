@@ -3,10 +3,14 @@ charset-normalizer==3.4.4
 gpsd==3.27.5.0.1
 gpsd-py3==0.3.0
 idna==3.11
+jplephem==2.24
+numpy==2.4.2
 packaging==26.0
 pynetbox==7.6.1
 pynmea2==1.19.0
 pyserial==3.5
 requests==2.32.5
 schedule==1.2.2
+sgp4==2.25
+skyfield==1.54
 urllib3==2.6.3
