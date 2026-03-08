@@ -4,6 +4,8 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 import math
+from configparser import Error
+from multiprocessing.managers import Value
 from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
 import requests
@@ -178,12 +180,12 @@ class DRV8825:
         self.MotorDir = ['forward', 'backward' ]
         self.ControlMode = ['hardward', 'softward' ]
 
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        GPIO.setup(self.dir_pin, GPIO.OUT)
-        GPIO.setup(self.step_pin, GPIO.OUT)
-        GPIO.setup(self.enable_pin, GPIO.OUT)
-        GPIO.setup(self.mode_pins, GPIO.OUT)
+        # GPIO.setmode(GPIO.BCM)
+        # GPIO.setwarnings(False)
+        # GPIO.setup(self.dir_pin, GPIO.OUT)
+        # GPIO.setup(self.step_pin, GPIO.OUT)
+        # GPIO.setup(self.enable_pin, GPIO.OUT)
+        # GPIO.setup(self.mode_pins, GPIO.OUT)
 
     def digital_write(self, pin, value):
         GPIO.output(pin, value)
@@ -242,12 +244,13 @@ class DRV8825:
 
 class Motor(DRV8825):
     def __init__(self, dir_pin: int, step_pin: int, enable_pin: int, mode_pins: tuple, steps: int = 200):
-        #super().__init__(dir_pin, step_pin, enable_pin, mode_pins)
+        super().__init__(dir_pin, step_pin, enable_pin, mode_pins)
         self.steps = steps
         self.steps_degree = float(360 / self.steps)
         self.precision = len(str(self.steps_degree).split('.')[-1])
         self.current_angle = 0.0  # Angle actuel en degrés
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
+        self.step_needed = 0
 
     def move_to_angle(self, target_angle: float):
         """
@@ -257,23 +260,34 @@ class Motor(DRV8825):
         # Normaliser l'angle cible entre 0° et 360°
         target_angle = target_angle % 360
         # Calculer le delta entre l'angle cible et l'angle actuel
-
-        delta = abs(target_angle - self.current_angle)
+        delta = target_angle - self.current_angle
         self.cumulative_delta += delta
 
-        print(self.cumulative_delta)
-
-        if self.cumulative_delta >= self.steps_degree:
-            direction = 'forward' if self.cumulative_delta <= 180 else 'backward'
-            stepd_needed = int(round(self.cumulative_delta / self.steps_degree))
-            print("move motor", direction, stepd_needed)
-            self.current_angle = stepd_needed * self.steps_degree % 360
+        if abs(self.cumulative_delta) >= self.steps_degree:
+            direction = self.MotorDir[0] if self.cumulative_delta > 0 else self.MotorDir[1]
+            self.step_needed = int(round(abs(self.cumulative_delta) / self.steps_degree))
+            self.set_current_angle(step=self.step_needed, direction=direction)
             self.cumulative_delta = 0.0
+            self.step_needed = 0
+
+    def set_current_angle(self, step:int, direction:str):
+        if direction == self.MotorDir[0]:
+            self.current_angle += step * self.steps_degree % 360
+        elif direction == self.MotorDir[1]:
+            self.current_angle -= step * self.steps_degree % 360
+        else:
+            raise ValueError("Current direction {desired_dir} is not allowed. Allowed direction is {allow_dir}"
+                             .format(desired_dir=direction, allow_dir=' or '.join(self.MotorDir)))
 
 
     def get_current_angle(self) -> float:
         """Retourne l'angle actuel du moteur."""
-        return self.current_angle
+        return round(self.current_angle, self.precision)
+
+    def set_reducteur(self, reducteur: float ):
+        self.steps *= 1 / reducteur
+        self.steps_degree = float(360 / self.steps)
+        self.precision = len(str(self.steps_degree).split('.')[-1])
 
 #gps = GPS()
 #current_position = gps.get_position()
@@ -284,6 +298,7 @@ iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
 
 #azimut_motor = DRV8825(dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
 azimut_motor = Motor(steps=200, dir_pin=24, step_pin=18, enable_pin=4, mode_pins=(21, 22, 27))
+azimut_motor.set_reducteur(20/60)
 
 try:
     while True:
