@@ -5,7 +5,7 @@
 
 import math
 from configparser import Error
-from multiprocessing.managers import Value
+#from multiprocessing.managers import Value
 from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
 import requests
@@ -304,11 +304,12 @@ try:
     while True:
         iss.get_position(0)
         azimut = iss.get_azimut(lat_src, long_src)
+        elevation = iss.get_elevation(lat_src, long_src, haut_src)
+        azimut_motor.move_to_angle(azimut)
         motor_azimut = azimut_motor.get_current_angle()
         print("ISS: ", azimut, "Motor: ", motor_azimut)
-        azimut_motor.move_to_angle(azimut)
         print("######################")
-        sleep(3)
+        sleep(1)
 except KeyboardInterrupt:
     #azimut_motor.Stop()
     exit(0)
