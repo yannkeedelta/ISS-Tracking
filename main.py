@@ -9,8 +9,8 @@ from configparser import Error
 from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
 import requests
-#import gpsd
-#import RPi.GPIO as GPIO
+import gpsd
+import RPi.GPIO as GPIO
 
 
 class Satellite:
@@ -180,12 +180,12 @@ class DRV8825:
         self.MotorDir = ['forward', 'backward' ]
         self.ControlMode = ['hardward', 'softward' ]
 
-        # GPIO.setmode(GPIO.BCM)
-        # GPIO.setwarnings(False)
-        # GPIO.setup(self.dir_pin, GPIO.OUT)
-        # GPIO.setup(self.step_pin, GPIO.OUT)
-        # GPIO.setup(self.enable_pin, GPIO.OUT)
-        # GPIO.setup(self.mode_pins, GPIO.OUT)
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup(self.dir_pin, GPIO.OUT)
+        GPIO.setup(self.step_pin, GPIO.OUT)
+        GPIO.setup(self.enable_pin, GPIO.OUT)
+        GPIO.setup(self.mode_pins, GPIO.OUT)
 
     def digital_write(self, pin, value):
         GPIO.output(pin, value)
@@ -220,11 +220,9 @@ class DRV8825:
 
     def TurnStep(self, Dir, steps, stepdelay: float =0.005):
         if Dir == self.MotorDir[0]:
-            print("forward")
             self.digital_write(self.enable_pin, 1)
             self.digital_write(self.dir_pin, 0)
         elif Dir == self.MotorDir[1]:
-            print("backward")
             self.digital_write(self.enable_pin, 1)
             self.digital_write(self.dir_pin, 1)
         else:
@@ -235,7 +233,6 @@ class DRV8825:
         if steps == 0:
             return
 
-        print("turn step:", steps)
         for i in range(steps):
             self.digital_write(self.step_pin, True)
             sleep(stepdelay)
@@ -266,6 +263,7 @@ class Motor(DRV8825):
         if abs(self.cumulative_delta) >= self.steps_degree:
             direction = self.MotorDir[0] if self.cumulative_delta > 0 else self.MotorDir[1]
             self.step_needed = int(round(abs(self.cumulative_delta) / self.steps_degree))
+            self.TurnStep(Dir=direction, steps=self.step_needed)
             self.set_current_angle(step=self.step_needed, direction=direction)
             self.cumulative_delta = 0.0
             self.step_needed = 0
@@ -311,5 +309,5 @@ try:
         print("######################")
         sleep(1)
 except KeyboardInterrupt:
-    #azimut_motor.Stop()
+    azimut_motor.Stop()
     exit(0)
