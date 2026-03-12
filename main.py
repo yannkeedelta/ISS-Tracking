@@ -72,9 +72,9 @@ class Satellite:
         self.altitude = float(subpoint.elevation.m)
 
         return (
-            float(subpoint.latitude.degrees),
-            float(subpoint.longitude.degrees),
-            float(subpoint.elevation.km)
+            self.latitude,
+            self.longitude,
+            self.altitude,
         )
 
     def get_iss(self):
@@ -306,7 +306,8 @@ azimut_motor.set_reducteur(20/60)
 
 try:
     while True:
-        iss.get_position(0)
+        la, lo, ht = iss.get_position(0)
+        print("altitude:",ht)
         azimut = iss.get_azimut(lat_src, long_src)
         elevation = iss.get_elevation(lat_src, long_src, haut_src)
 
