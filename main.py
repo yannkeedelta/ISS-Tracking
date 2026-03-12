@@ -69,7 +69,7 @@ class Satellite:
 
         self.latitude = float(subpoint.latitude.degrees)
         self.longitude = float(subpoint.longitude.degrees)
-        self.altitude = float(subpoint.elevation.km)
+        self.altitude = float(subpoint.elevation.m)
 
         return (
             float(subpoint.latitude.degrees),
@@ -295,7 +295,7 @@ class Motor(DRV8825):
 lat_src, long_src, haut_src = float(48.85), float(2.34), float(0)
 iss = Satellite()
 iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
-threshold = 3.0
+threshold = 1.0
 
 
 elevation_motor = Motor(steps=200, dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
@@ -322,7 +322,7 @@ try:
         motor_azimut = azimut_motor.get_current_angle()
         motor_elevation = elevation_motor.get_current_angle()
         print("Azimut: ","ISS: ", azimut, "Motor: ", motor_azimut)
-        #print("Elevation: ","ISS: ", elevation, "Motor: ", motor_elevation)
+        print("Elevation: ","ISS: ", elevation, "Motor: ", motor_elevation)
         print("######################")
         sleep(1)
 except KeyboardInterrupt:
