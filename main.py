@@ -4,13 +4,12 @@
 # Press Double Shift to search everywhere for classes, files, tool windows, actions, and settings.
 
 import math
-from configparser import Error
-#from multiprocessing.managers import Value
 from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
 import requests
 import gpsd
-import RPi.GPIO as GPIO
+#import RPi.GPIO as GPIO
+import threading
 
 
 class Satellite:
@@ -180,12 +179,12 @@ class DRV8825:
         self.MotorDir = ['forward', 'backward' ]
         self.ControlMode = ['hardward', 'softward' ]
 
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-        GPIO.setup(self.dir_pin, GPIO.OUT)
-        GPIO.setup(self.step_pin, GPIO.OUT)
-        GPIO.setup(self.enable_pin, GPIO.OUT)
-        GPIO.setup(self.mode_pins, GPIO.OUT)
+        #GPIO.setmode(GPIO.BCM)
+        #GPIO.setwarnings(False)
+        #GPIO.setup(self.dir_pin, GPIO.OUT)
+        #GPIO.setup(self.step_pin, GPIO.OUT)
+        #GPIO.setup(self.enable_pin, GPIO.OUT)
+        #GPIO.setup(self.mode_pins, GPIO.OUT)
 
     def digital_write(self, pin, value):
         GPIO.output(pin, value)
@@ -249,21 +248,23 @@ class Motor(DRV8825):
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
         self.step_needed = 0
 
-    def move_to_angle(self, target_angle: float):
+    def move_to_angle(self, target_angle: float, threshold: float = 1.0):
         """
         Déplacer le moteur à l'angle cible (en degrés).
         Calcule le delta et ajuste le nombre de steps.
         """
+        if target_angle < 0:
+            return
         # Normaliser l'angle cible entre 0° et 360°
         target_angle = target_angle % 360
         # Calculer le delta entre l'angle cible et l'angle actuel
         delta = target_angle - self.current_angle
         self.cumulative_delta += delta
 
-        if abs(self.cumulative_delta) >= self.steps_degree:
+        if abs(self.cumulative_delta) >= (self.steps_degree * threshold):
             direction = self.MotorDir[0] if self.cumulative_delta > 0 else self.MotorDir[1]
             self.step_needed = int(round(abs(self.cumulative_delta) / self.steps_degree))
-            self.TurnStep(Dir=direction, steps=self.step_needed)
+            #self.TurnStep(Dir=direction, steps=self.step_needed)
             self.set_current_angle(step=self.step_needed, direction=direction)
             self.cumulative_delta = 0.0
             self.step_needed = 0
@@ -287,27 +288,44 @@ class Motor(DRV8825):
         self.steps_degree = float(360 / self.steps)
         self.precision = len(str(self.steps_degree).split('.')[-1])
 
+
+
 #gps = GPS()
 #current_position = gps.get_position()
 lat_src, long_src, haut_src = float(48.85), float(2.34), float(0)
 iss = Satellite()
 iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
+threshold = 3.0
 
 
-#azimut_motor = DRV8825(dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
+elevation_motor = Motor(steps=200, dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
 azimut_motor = Motor(steps=200, dir_pin=24, step_pin=18, enable_pin=4, mode_pins=(21, 22, 27))
+elevation_motor.set_reducteur(20/60)
 azimut_motor.set_reducteur(20/60)
+
 
 try:
     while True:
         iss.get_position(0)
         azimut = iss.get_azimut(lat_src, long_src)
         elevation = iss.get_elevation(lat_src, long_src, haut_src)
-        azimut_motor.move_to_angle(azimut)
+
+        azimut_thread = threading.Thread(target=azimut_motor.move_to_angle, args=(azimut,threshold))
+        elevation_thread = threading.Thread(target=elevation_motor.move_to_angle, args=(elevation,threshold))
+
+        azimut_thread.start()
+        elevation_thread.start()
+
+        azimut_thread.join()
+        elevation_thread.join()
+
         motor_azimut = azimut_motor.get_current_angle()
-        print("ISS: ", azimut, "Motor: ", motor_azimut)
+        motor_elevation = elevation_motor.get_current_angle()
+        print("Azimut: ","ISS: ", azimut, "Motor: ", motor_azimut)
+        #print("Elevation: ","ISS: ", elevation, "Motor: ", motor_elevation)
         print("######################")
         sleep(1)
 except KeyboardInterrupt:
-    azimut_motor.Stop()
+    #azimut_motor.Stop()
+    #elevation_motor.Stop()
     exit(0)
