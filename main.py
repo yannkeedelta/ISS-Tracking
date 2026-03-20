@@ -8,7 +8,7 @@ from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
 import requests
 import gpsd
-#import RPi.GPIO as GPIO
+import RPi.GPIO as GPIO
 import threading
 
 
@@ -16,7 +16,7 @@ class Satellite:
     def __init__(self):
         #self.api = 'https://api.wheretheiss.at/v1/satellites/25544'
         self.R = 6371000
-
+        self.tle = None
         self.tle_api = None
         self.latitude = None
         self.longitude = None
@@ -32,6 +32,9 @@ class Satellite:
         self.tle_api = tle
         self._load_tle()
         return self
+
+    def get_tle(self):
+        return self.tle
 
     def _load_tle(self):
         """Charge les TLE depuis l'API ivanstanojevic"""
@@ -176,15 +179,20 @@ class DRV8825:
         self.step_pin = step_pin
         self.enable_pin = enable_pin
         self.mode_pins = mode_pins
+        self.max_speed = 500
+        self.min_speed = 10
+        self.acc_duration = 1
+        self.desc_duration = 1
         self.MotorDir = ['forward', 'backward' ]
         self.ControlMode = ['hardward', 'softward' ]
 
-        #GPIO.setmode(GPIO.BCM)
-        #GPIO.setwarnings(False)
-        #GPIO.setup(self.dir_pin, GPIO.OUT)
-        #GPIO.setup(self.step_pin, GPIO.OUT)
-        #GPIO.setup(self.enable_pin, GPIO.OUT)
-        #GPIO.setup(self.mode_pins, GPIO.OUT)
+
+        GPIO.setmode(GPIO.BCM)
+        GPIO.setwarnings(False)
+        GPIO.setup(self.dir_pin, GPIO.OUT)
+        GPIO.setup(self.step_pin, GPIO.OUT)
+        GPIO.setup(self.enable_pin, GPIO.OUT)
+        GPIO.setup(self.mode_pins, GPIO.OUT)
 
     def digital_write(self, pin, value):
         GPIO.output(pin, value)
@@ -217,7 +225,40 @@ class DRV8825:
             print("set pins")
             self.digital_write(self.mode_pins, microstep[stepformat])
 
-    def TurnStep(self, Dir, steps, stepdelay: float =0.005):
+
+    def sinusoidal_step_delay(self, current_step: int, total_steps: int) -> float:
+        """
+        Calcule le délai entre deux pas pour un profil sinusoïdal avec une vitesse minimale.
+
+        Args:
+            current_step: Le numéro du pas actuel (0 à total_steps-1).
+            total_steps: Le nombre total de pas pour le mouvement.
+
+        Returns:
+            Délai en secondes entre deux pas.
+        """
+        # Nombre de pas pendant l'accélération
+        pas_accel = int(self.max_speed * self.acc_duration / 2)
+        # Nombre de pas pendant la décélération
+        pas_decel = int(self.max_speed * self.desc_duration / 2)
+
+        # Phase d'accélération
+        if current_step < pas_accel:
+            t = current_step / pas_accel * self.acc_duration
+            vitesse_inst = (self.max_speed - self.min_speed) / 2 * (1 - math.cos(math.pi * t / self.acc_duration)) + self.min_speed
+        # Phase de décélération
+        elif current_step >= (total_steps - pas_decel):
+            t = (current_step - (total_steps - pas_decel)) / pas_decel * self.desc_duration
+            vitesse_inst = (self.max_speed - self.min_speed) / 2 * (1 + math.cos(math.pi * t / self.desc_duration)) + self.min_speed
+        # Phase à vitesse constante
+        else:
+            vitesse_inst = self.max_speed
+
+        # Calcul du délai
+        delai = 1.0 / vitesse_inst
+        return delai
+
+    def TurnStep(self, Dir, steps, stepdelay: float = 0.005):
         if Dir == self.MotorDir[0]:
             self.digital_write(self.enable_pin, 1)
             self.digital_write(self.dir_pin, 0)
@@ -232,11 +273,16 @@ class DRV8825:
         if steps == 0:
             return
 
+        delay_list = []
+        for i in range(steps):
+            stepdelay = self.sinusoidal_step_delay(i, steps)
+            delay_list.append(stepdelay)
+
         for i in range(steps):
             self.digital_write(self.step_pin, True)
-            sleep(stepdelay)
+            sleep(delay_list[i])
             self.digital_write(self.step_pin, False)
-            sleep(stepdelay)
+            sleep(delay_list[i])
 
 class Motor(DRV8825):
     def __init__(self, dir_pin: int, step_pin: int, enable_pin: int, mode_pins: tuple, steps: int = 200):
@@ -252,6 +298,7 @@ class Motor(DRV8825):
         """
         Déplacer le moteur à l'angle cible (en degrés).
         Calcule le delta et ajuste le nombre de steps.
+        Le mouvement n'est déclenché que si le delta cumulé dépasse le seuil (en degrés).
         """
         if target_angle < 0:
             return
@@ -261,13 +308,32 @@ class Motor(DRV8825):
         delta = target_angle - self.current_angle
         self.cumulative_delta += delta
 
+        #print(self.cumulative_delta)
+
+        # Si le delta cumulé dépasse le seuil, on déclenche le mouvement
         if abs(self.cumulative_delta) >= (self.steps_degree * threshold):
             direction = self.MotorDir[0] if self.cumulative_delta > 0 else self.MotorDir[1]
             self.step_needed = int(round(abs(self.cumulative_delta) / self.steps_degree))
-            #self.TurnStep(Dir=direction, steps=self.step_needed)
+            self.TurnStep(Dir=direction, steps=self.step_needed)
             self.set_current_angle(step=self.step_needed, direction=direction)
-            self.cumulative_delta = 0.0
+            self.cumulative_delta = 0.0  # Réinitialiser après mouvement
             self.step_needed = 0
+        else:
+            # Si on ne bouge pas, on garde seulement le dernier delta (pas d'accumulation)
+            self.cumulative_delta = delta
+
+    def set_acceleration_curve(self, vitesse_max: int, vitesse_min: int, duree_accel: float, duree_decel: float):
+        if vitesse_max is not None:
+            self.max_speed = vitesse_max
+
+        if vitesse_min is not None:
+            self.min_speed = vitesse_min
+
+        if duree_accel is not None:
+            self.acc_duration = duree_accel
+
+        if duree_decel is not None:
+            self.desc_duration = duree_accel
 
     def set_current_angle(self, step:int, direction:str):
         if direction == self.MotorDir[0]:
@@ -295,38 +361,42 @@ class Motor(DRV8825):
 lat_src, long_src, haut_src = float(48.85), float(2.34), float(0)
 iss = Satellite()
 iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
-threshold = 1.0
+threshold = 1/(20/60)
+
 
 
 elevation_motor = Motor(steps=200, dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
 azimut_motor = Motor(steps=200, dir_pin=24, step_pin=18, enable_pin=4, mode_pins=(21, 22, 27))
+
+azimut_motor.set_acceleration_curve(vitesse_max=500, vitesse_min=20, duree_accel=0.5, duree_decel=0.5)
+elevation_motor.set_acceleration_curve(vitesse_max=500, vitesse_min=20, duree_accel=0.5, duree_decel=0.5)
+
 elevation_motor.set_reducteur(20/60)
 azimut_motor.set_reducteur(20/60)
 
+if iss.get_tle() is not None:
+    try:
+        while True:
+            iss.get_position(0)
+            azimut = iss.get_azimut(lat_src, long_src)
+            elevation = iss.get_elevation(lat_src, long_src, haut_src)
 
-try:
-    while True:
-        la, lo, ht = iss.get_position(0)
-        print("altitude:",ht)
-        azimut = iss.get_azimut(lat_src, long_src)
-        elevation = iss.get_elevation(lat_src, long_src, haut_src)
+            azimut_thread = threading.Thread(target=azimut_motor.move_to_angle, args=(azimut,threshold))
+            elevation_thread = threading.Thread(target=elevation_motor.move_to_angle, args=(elevation,threshold))
 
-        azimut_thread = threading.Thread(target=azimut_motor.move_to_angle, args=(azimut,threshold))
-        elevation_thread = threading.Thread(target=elevation_motor.move_to_angle, args=(elevation,threshold))
+            azimut_thread.start()
+            elevation_thread.start()
 
-        azimut_thread.start()
-        elevation_thread.start()
+            azimut_thread.join()
+            elevation_thread.join()
 
-        azimut_thread.join()
-        elevation_thread.join()
-
-        motor_azimut = azimut_motor.get_current_angle()
-        motor_elevation = elevation_motor.get_current_angle()
-        print("Azimut: ","ISS: ", azimut, "Motor: ", motor_azimut)
-        print("Elevation: ","ISS: ", elevation, "Motor: ", motor_elevation)
-        print("######################")
-        sleep(1)
-except KeyboardInterrupt:
-    #azimut_motor.Stop()
-    #elevation_motor.Stop()
-    exit(0)
+            motor_azimut = azimut_motor.get_current_angle()
+            motor_elevation = elevation_motor.get_current_angle()
+            print("Azimut: ","ISS: ", azimut, "Motor: ", motor_azimut)
+            print("Elevation: ","ISS: ", elevation, "Motor: ", motor_elevation)
+            print("######################")
+            sleep(1)
+    except KeyboardInterrupt:
+        azimut_motor.Stop()
+        elevation_motor.Stop()
+        exit(0)
