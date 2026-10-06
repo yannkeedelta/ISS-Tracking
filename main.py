@@ -6,6 +6,9 @@
 import math
 from time import sleep
 from skyfield.api import EarthSatellite, Topos, load
+import sys
+import termios
+import tty
 import requests
 import gpsd
 import RPi.GPIO as GPIO
@@ -293,6 +296,7 @@ class Motor(DRV8825):
         self.current_angle = 0.0  # Angle actuel en degrés
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
         self.step_needed = 0
+        self.align()
 
     def move_to_angle(self, target_angle: float, threshold: float = 1.0):
         """
@@ -354,6 +358,31 @@ class Motor(DRV8825):
         self.steps_degree = float(360 / self.steps)
         self.precision = len(str(self.steps_degree).split('.')[-1])
 
+    def align(self):
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            print("Appuyez sur ← → pour initialiser la position du moteur")
+            print("Appuyez sur Entrer pour quitter.")
+
+            while True:
+                key = sys.stdin.read(1)
+
+                if key in ("\r", "\n"):
+                    break
+
+                if key == "\x1b":
+                    sequence = key + sys.stdin.read(2)
+
+                    if sequence == "\x1b[D":
+                        self.TurnStep('forward', 1)
+                    elif sequence == "\x1b[C":
+                        self.TurnStep('backward', 1)
+
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+
 
 
 #gps = GPS()
@@ -363,16 +392,15 @@ iss = Satellite()
 iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
 threshold = 1/(20/60)
 
-
-
 elevation_motor = Motor(steps=200, dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
 azimut_motor = Motor(steps=200, dir_pin=24, step_pin=18, enable_pin=4, mode_pins=(21, 22, 27))
 
 azimut_motor.set_acceleration_curve(vitesse_max=500, vitesse_min=20, duree_accel=0.5, duree_decel=0.5)
 elevation_motor.set_acceleration_curve(vitesse_max=500, vitesse_min=20, duree_accel=0.5, duree_decel=0.5)
 
-elevation_motor.set_reducteur(20/60)
 azimut_motor.set_reducteur(20/60)
+elevation_motor.set_reducteur(20/60)
+
 
 if iss.get_tle() is not None:
     try:
