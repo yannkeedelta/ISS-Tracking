@@ -296,7 +296,7 @@ class Motor(DRV8825):
         self.current_angle = 0.0  # Angle actuel en degrés
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
         self.step_needed = 0
-        self.align()
+        #self.align()
 
     def move_to_angle(self, target_angle: float, threshold: float = 1.0):
         """
@@ -363,8 +363,8 @@ class Motor(DRV8825):
         old_settings = termios.tcgetattr(fd)
         try:
             tty.setraw(fd)
-            print("Appuyez sur ← → pour initialiser la position du moteur")
-            print("Appuyez sur Entrer pour quitter.")
+            print("Appuyez sur ← → pour initialiser la position du moteur\r")
+            print("Appuyez sur Entrer pour quitter.\r")
 
             while True:
                 key = sys.stdin.read(1)
@@ -391,6 +391,7 @@ lat_src, long_src, haut_src = float(48.85), float(2.34), float(0)
 iss = Satellite()
 iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
 threshold = 1/(20/60)
+largeur_1, largeur_2, largeur_3 = 20, 25, 10
 
 elevation_motor = Motor(steps=200, dir_pin=13, step_pin=19, enable_pin=12, mode_pins=(16, 17, 20))
 azimut_motor = Motor(steps=200, dir_pin=24, step_pin=18, enable_pin=4, mode_pins=(21, 22, 27))
@@ -420,9 +421,14 @@ if iss.get_tle() is not None:
 
             motor_azimut = azimut_motor.get_current_angle()
             motor_elevation = elevation_motor.get_current_angle()
-            print("Azimut: ","ISS: ", azimut, "Motor: ", motor_azimut)
-            print("Elevation: ","ISS: ", elevation, "Motor: ", motor_elevation)
-            print("######################")
+
+            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
+            print(f"| {'Paramètres':<{largeur_1 - 2}} | {'ISS':^{largeur_2 - 2}} | {'Moteur':^{largeur_3 - 2}} |", flush=True)
+            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
+            print(f"| {'Azimut':<{largeur_1 - 2}} | {azimut:>{largeur_2 - 3}}° | {motor_azimut:>{largeur_3 - 3}}° |", flush=True)
+            print(f"| {'Elevation':<{largeur_1 - 2}} | {elevation:>{largeur_2 - 3}}° | {motor_elevation:>{largeur_3 - 3}}° |", flush=True)
+            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
+
             sleep(1)
     except KeyboardInterrupt:
         azimut_motor.Stop()
