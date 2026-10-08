@@ -296,7 +296,7 @@ class Motor(DRV8825):
         self.current_angle = 0.0  # Angle actuel en degrés
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
         self.step_needed = 0
-        #self.align()
+        self.align()
 
     def move_to_angle(self, target_angle: float, threshold: float = 1.0):
         """
@@ -402,7 +402,6 @@ elevation_motor.set_acceleration_curve(vitesse_max=500, vitesse_min=20, duree_ac
 azimut_motor.set_reducteur(20/60)
 elevation_motor.set_reducteur(20/60)
 
-
 if iss.get_tle() is not None:
     try:
         while True:
@@ -421,6 +420,8 @@ if iss.get_tle() is not None:
 
             motor_azimut = azimut_motor.get_current_angle()
             motor_elevation = elevation_motor.get_current_angle()
+
+            print("\033[2J\033[H", end="")
 
             print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
             print(f"| {'Paramètres':<{largeur_1 - 2}} | {'ISS':^{largeur_2 - 2}} | {'Moteur':^{largeur_3 - 2}} |", flush=True)
