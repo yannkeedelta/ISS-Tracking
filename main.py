@@ -36,6 +36,14 @@ class Satellite:
         self._load_tle()
         return self
 
+    def set_tle(self, data):
+        self.tle = {
+            'name': data['name'],
+            'line1': data['line1'],
+            'line2': data['line2']
+        }
+        print(f"[+] TLE chargé : {self.tle['name']}")
+
     def get_tle(self):
         return self.tle
 
@@ -203,7 +211,6 @@ class DRV8825:
     def Stop(self):
         print("Stop motor")
         self.digital_write(self.enable_pin, 0)
-        GPIO.cleanup()
 
     def SetMicroStep(self, mode, stepformat):
         """
@@ -281,6 +288,7 @@ class DRV8825:
             stepdelay = self.sinusoidal_step_delay(i, steps)
             delay_list.append(stepdelay)
 
+        print(delay_list)
         for i in range(steps):
             self.digital_write(self.step_pin, True)
             sleep(delay_list[i])
@@ -296,7 +304,7 @@ class Motor(DRV8825):
         self.current_angle = 0.0  # Angle actuel en degrés
         self.cumulative_delta = 0.0  # Pour cumuler les deltas trop petits
         self.step_needed = 0
-        self.align()
+        #self.align()
 
     def move_to_angle(self, target_angle: float, threshold: float = 1.0):
         """
@@ -389,7 +397,14 @@ class Motor(DRV8825):
 #current_position = gps.get_position()
 lat_src, long_src, haut_src = float(48.85), float(2.34), float(0)
 iss = Satellite()
-iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
+tle = {
+    'name': 'ISS (ZARYA)',
+    'line1': '1 25544U 98067A   26281.85354122  .00006592  00000+0  12863-3 0  9993',
+    'line2': '2 25544  51.6315  97.5838 0006777 239.2205 120.8116 15.48782232589376'
+}
+iss.set_tle(tle)
+#iss.set_tle_api('https://tle.ivanstanojevic.me/api/tle/25544')
+
 threshold = 1/(20/60)
 largeur_1, largeur_2, largeur_3 = 20, 25, 10
 
@@ -421,14 +436,12 @@ if iss.get_tle() is not None:
             motor_azimut = azimut_motor.get_current_angle()
             motor_elevation = elevation_motor.get_current_angle()
 
-            print("\033[2J\033[H", end="")
-
-            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
-            print(f"| {'Paramètres':<{largeur_1 - 2}} | {'ISS':^{largeur_2 - 2}} | {'Moteur':^{largeur_3 - 2}} |", flush=True)
-            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
-            print(f"| {'Azimut':<{largeur_1 - 2}} | {azimut:>{largeur_2 - 3}}° | {motor_azimut:>{largeur_3 - 3}}° |", flush=True)
-            print(f"| {'Elevation':<{largeur_1 - 2}} | {elevation:>{largeur_2 - 3}}° | {motor_elevation:>{largeur_3 - 3}}° |", flush=True)
-            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+", flush=True)
+            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+")
+            print(f"| {'Paramètres':<{largeur_1 - 2}} | {'ISS':^{largeur_2 - 2}} | {'Moteur':^{largeur_3 - 2}} |")
+            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+")
+            print(f"| {'Azimut':<{largeur_1 - 2}} | {azimut:>{largeur_2 - 3}}° | {motor_azimut:>{largeur_3 - 3}}° |")
+            print(f"| {'Elevation':<{largeur_1 - 2}} | {elevation:>{largeur_2 - 3}}° | {motor_elevation:>{largeur_3 - 3}}° |")
+            print("+" + "-" * largeur_1 + "+" + "-" * largeur_2 + "+" + "-" * largeur_3 + "+")
 
             sleep(1)
     except KeyboardInterrupt:
