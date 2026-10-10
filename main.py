@@ -36,7 +36,7 @@ class Satellite:
         self._load_tle()
         return self
 
-    def set_tle(self, data):
+    def set_tle(self, data: dict):
         self.tle = {
             'name': data['name'],
             'line1': data['line1'],
